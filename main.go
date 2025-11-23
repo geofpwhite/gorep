@@ -188,7 +188,8 @@ func recursiveFileSearch(path string) [][2]string {
 		}
 		contents, err := os.ReadFile(e.Name())
 		if err != nil {
-			log.Fatal(err)
+			fmt.Println(err)
+			continue
 		}
 		files = append(files, [2]string{e.Name(), string(contents)})
 	}
