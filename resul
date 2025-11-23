@@ -1,0 +1,148 @@
+.golangci.yml: 
+1. # Config for golangci-lint - shared across fortio org projects (included by gochecks workflow step)
+6. default: all
+9. - exhaustruct # seems like a good idea at first but actually a pain and go does have zero values for a reason.
+13. # - gofumpt
+23. # consider putting these back, when they stop being bugged (ifshort, wastedassign,...)
+26. - forbidigo
+29. - forcetypeassert
+35. - funcorder
+36. - noinlineerr # prize for worst linter ever
+37. - embeddedstructfieldcheck
+43. - github.com/does/not/exist # until we can put [] in the config
+46. - "418" # until we can put [] in the config/allow teapot!
+53. default-signifies-exhaustive: true
+54. funlen:
+63. disable-all: false
+65. printf:
+66. funcs:
+67. - (github.com/golangci/golangci-lint/pkg/logutils.Log).Infof
+68. - (github.com/golangci/golangci-lint/pkg/logutils.Log).Warnf
+69. - (github.com/golangci/golangci-lint/pkg/logutils.Log).Errorf
+70. - (github.com/golangci/golangci-lint/pkg/logutils.Log).Fatalf
+71. - (github.com/golangci/golangci-lint/pkg/logutils.Log).Printf
+72. - (github.com/golangci/golangci-lint/pkg/logutils.Log).FErrf
+79. - fortio
+81. max-func-lines: 30
+82. nestif:
+85. require-specific: true
+88. multi-if: false
+89. multi-func: false
+94. - common-false-positives
+102. - forcetypeassert
+116. text: do not define dynamic errors
+119. text: 'fieldalignment:'
+134. default: error
+135. formatters:
+137. - gofumpt
+140. gofumpt:
+141. extra-rules: false
+README.md: 
+3. A small, fast grep-like tool written in Go. `gorep` searches text for a regular expression and prints matching lines with colored highlights. It supports reading from stdin, searching an inline string, a file, or recursively searching files in a directory.
+7. - Colored output: matches highlighted in green, file/line labels in red/white (via `fortio.org/terminal/ansipixels/tcolor`).
+8. - Supports reading from `stdin`, a single file, or a directory (recurses into subdirectories).
+12. - Go (1.18+ recommended). Verify with `go version`.
+32. gorep "foo" "this is foo and that is bar"
+35. - Search a file:
+38. gorep "TODO" -f README.md
+44. gorep "TODO" -f ./src
+48. - `-f <path>` : read input from a file or directory. If a directory is provided, `gorep` will walk the directory and search files it can read.
+49. - `-no-trim` : disable trimming leading indentation in each printed line. By default `gorep` trims leading tabs/spaces around matches.
+52. - The first non-flag argument is treated as the regular expression pattern.
+53. - If additional non-flag arguments are provided after the pattern they are joined into a single input string to search (convenient for one-off searches from the CLI).
+54. - If no `-f` is provided and no inline text is given, `gorep` reads from `stdin` until EOF.
+55. - Matches in a line are highlighted in green; printed lines are numbered and prefixed with color-coded labels. When searching directories, each file's results are prefixed by the filename.
+58. - The directory traversal implementation changes the working directory while recursing; if you rely on a stable working directory in other parts of a larger script, be cautious.
+60. - Errors (invalid regexp, unreadable file, etc.) will log a message and exit with a non-zero status.
+69. - Open issues or pull requests. Small, focused changes are easiest to review.
+72. - No license file is included. Add a license (for example `MIT` or `Apache-2.0`) if you want to allow reuse.
+go.mod: 
+1. module github.com/geofpwhite/gorep
+5. require fortio.org/terminal v0.62.0
+7. require fortio.org/safecast v1.2.0 // indirect
+go.sum: 
+1. fortio.org/safecast v1.2.0 h1:ckQJNenMJHycqPsi/QrzA4EUX5WQkyd+hGO4mxt/a8w=
+2. fortio.org/safecast v1.2.0/go.mod h1:xZmcPk3vi4kuUFf+tq4SvnlVdwViqf6ZSZl91Jr9Jdg=
+3. fortio.org/terminal v0.62.0 h1:P8e5PYbBTQrzXnkX9wcLOsxwCFANmrap+JiPpI75H/I=
+4. fortio.org/terminal v0.62.0/go.mod h1:tuZ285oAEq8dQQdJi69bBCRVg/Yxczqmms0Ql/c0wg4=
+main.go: 
+4. "bufio"
+5. "flag"
+6. "fmt"
+12. "fortio.org/terminal/ansipixels/tcolor"
+15. func main() {
+26. func Main() {
+27. if len(os.Args) < 2 {
+31. noTrim := flag.Bool("no-trim", false,
+33. fileFlag := flag.String("f", "", "take input from a file or directory")
+34. outputFile := flag.String("o", "", "save the matches to a file")
+35. flag.Parse()
+36. args := flag.Args()
+39. err = flag.CommandLine.Parse(args[1:])
+40. if err != nil {
+43. var opf *os.File
+44. if *outputFile != "" {
+46. if err == nil {
+47. log.Fatal("output file already exists")
+49. opf, err = os.Create(*outputFile)
+50. if err != nil {
+51. log.Fatal("output file couldn't be created")
+53. defer opf.Close()
+57. if err != nil {
+58. fmt.Println(err)
+62. if len(args) > 1 {
+66. case *fileFlag != "":
+67. info, err := os.Stat(*fileFlag)
+68. if err != nil {
+69. fmt.Println("can't open given file or directory")
+72. if info.IsDir() {
+73. files := recursiveFileSearch(*fileFlag)
+74. matchAllChildren(re, *noTrim, files, opf)
+77. content, err := os.ReadFile(*fileFlag)
+79. if err != nil {
+80. fmt.Println("can't open given file")
+84. scanner := bufio.NewScanner(os.Stdin)
+87. for scanner.Scan() {
+93. if err != nil {
+94. fmt.Println("invalid input")
+100. match(re, *noTrim, str, "", opf)
+103. func matchAllChildren(re *regexp.Regexp, noTrim bool, children [][2]string, outputFile *os.File) {
+104. for _, file := range children {
+105. preString := fmt.Sprintf("%s%s: \n", BLUE, file[0])
+106. match(re, noTrim, file[1], preString, outputFile)
+110. func match(re *regexp.Regexp, noTrim bool, str string, preString string, output *os.File) {
+114. for line := range strings.Lines(str) {
+117. if len(matches) == 0 {
+122. printString = fmt.Sprintf("%s%s%d. %s", printString, RED, i+1, WHITE)
+126. for j, m := range matches {
+128. if !noTrim {
+129. pre = strings.TrimLeft(pre, "\t")
+131. matchBuilder.WriteString(fmt.Sprintf("%s%s%s%s", pre, GREEN, m, WHITE))
+133. if j != lengthMatches-1 {
+137. if !noTrim {
+143. if !noTrim {
+146. printString = fmt.Sprintf("%s%s", printString, matchString)
+150. if emptyCount < i {
+151. printString = fmt.Sprintf("%s%s", preString, printString)
+153. fmt.Printf("%s", printString)
+154. if output != nil {
+155. forOutputFile := strings.ReplaceAll(printString, GREEN, "")
+156. forOutputFile = strings.ReplaceAll(forOutputFile, RED, "")
+157. forOutputFile = strings.ReplaceAll(forOutputFile, BLUE, "")
+158. forOutputFile = strings.ReplaceAll(forOutputFile, WHITE, "")
+159. _, err := output.WriteString(forOutputFile)
+160. if err != nil {
+161. fmt.Println("couldn't write output")
+166. func recursiveFileSearch(path string) [][2]string {
+167. files := make([][2]string, 0) // {name, contents}
+169. if err != nil {
+170. return files
+173. if err != nil {
+176. for _, e := range entries {
+178. if err != nil {
+181. if e.IsDir() {
+183. if err != nil {
+186. files = append(files, recursiveFileSearch(e.Name())...)
+190. if err != nil {
+193. files = append(files, [2]string{e.Name(), string(contents)})
+195. return files

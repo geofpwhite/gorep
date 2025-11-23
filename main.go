@@ -20,6 +20,7 @@ var (
 	GREEN = tcolor.Green.Foreground()
 	WHITE = tcolor.White.Foreground()
 	RED   = tcolor.Red.Foreground()
+	BLUE  = tcolor.Blue.Foreground()
 )
 
 func Main() {
@@ -30,13 +31,32 @@ func Main() {
 	noTrim := flag.Bool("no-trim", false,
 		"disable trimming leading indentation in each line when printed")
 	fileFlag := flag.String("f", "", "take input from a file or directory")
+	outputFile := flag.String("o", "", "save the matches to a file")
 	flag.Parse()
 	args := flag.Args()
 	var re *regexp.Regexp
 	var err error
+	err = flag.CommandLine.Parse(args[1:])
+	if err != nil {
+		log.Fatal("bad input")
+	}
+	var opf *os.File
+	if *outputFile != "" {
+		_, err = os.ReadFile(*outputFile)
+		if err == nil {
+			log.Fatal("output file already exists")
+		}
+		opf, err = os.Create(*outputFile)
+		if err != nil {
+			log.Fatal("output file couldn't be created")
+		}
+		defer opf.Close()
+	}
+
 	re, err = regexp.Compile(args[0])
 	if err != nil {
-		log.Fatal("invalid input")
+		fmt.Println(err)
+		return
 	}
 	var str string
 	if len(args) > 1 {
@@ -46,17 +66,19 @@ func Main() {
 	case *fileFlag != "":
 		info, err := os.Stat(*fileFlag)
 		if err != nil {
-			log.Fatalf("can't open given file or directory")
+			fmt.Println("can't open given file or directory")
+			return
 		}
 		if info.IsDir() {
-			files := children(*fileFlag)
-			matchAllChildren(re, *noTrim, files)
+			files := recursiveFileSearch(*fileFlag)
+			matchAllChildren(re, *noTrim, files, opf)
 			return
 		}
 		content, err := os.ReadFile(*fileFlag)
 		str = string(content)
 		if err != nil {
-			log.Fatal("can't open given file")
+			fmt.Println("can't open given file")
+			return
 		}
 	case len(args) < 2:
 		scanner := bufio.NewScanner(os.Stdin)
@@ -69,22 +91,23 @@ func Main() {
 			index++
 			lines = append(lines, [2]int{builder.Len()})
 			if err != nil {
-				log.Fatal("invalid input")
+				fmt.Println("invalid input")
+				return
 			}
 		}
 		str = builder.String()
 	}
-	match(re, *noTrim, str, "")
+	match(re, *noTrim, str, "", opf)
 }
 
-func matchAllChildren(re *regexp.Regexp, noTrim bool, children [][2]string) {
+func matchAllChildren(re *regexp.Regexp, noTrim bool, children [][2]string, outputFile *os.File) {
 	for _, file := range children {
-		preString := fmt.Sprintf("%s%s: \n", RED, file[0])
-		match(re, noTrim, file[1], preString)
+		preString := fmt.Sprintf("%s%s: \n", BLUE, file[0])
+		match(re, noTrim, file[1], preString, outputFile)
 	}
 }
 
-func match(re *regexp.Regexp, noTrim bool, str string, preString string) {
+func match(re *regexp.Regexp, noTrim bool, str string, preString string, output *os.File) {
 	i := 0
 	emptyCount := 0
 	printString := ""
@@ -99,20 +122,22 @@ func match(re *regexp.Regexp, noTrim bool, str string, preString string) {
 		printString = fmt.Sprintf("%s%s%d. %s", printString, RED, i+1, WHITE)
 		matchBuilder := strings.Builder{}
 		curI := 0
+		lengthMatches := len(matches)
 		for j, m := range matches {
 			pre := line[curI:indices[j][0]]
+			if !noTrim {
+				pre = strings.TrimLeft(pre, "\t")
+			}
+			matchBuilder.WriteString(fmt.Sprintf("%s%s%s%s", pre, GREEN, m, WHITE))
+			curI = indices[j][1]
+			if j != lengthMatches-1 {
+				continue
+			}
 			post := line[indices[j][1]:]
 			if !noTrim {
-				pre = strings.Trim(pre, "\t ")
+				post = strings.TrimRight(post, "\t")
 			}
-			matchBuilder.WriteString(pre)
-			matchBuilder.WriteString(GREEN)
-			matchBuilder.WriteString(m)
-			matchBuilder.WriteString(WHITE)
-			curI = indices[j][1]
-			if j == len(matches)-1 {
-				matchBuilder.WriteString(post)
-			}
+			matchBuilder.WriteString(post)
 		}
 		matchString := matchBuilder.String()
 		if !noTrim {
@@ -126,9 +151,19 @@ func match(re *regexp.Regexp, noTrim bool, str string, preString string) {
 		printString = fmt.Sprintf("%s%s", preString, printString)
 	}
 	fmt.Printf("%s", printString)
+	if output != nil {
+		forOutputFile := strings.ReplaceAll(printString, GREEN, "")
+		forOutputFile = strings.ReplaceAll(forOutputFile, RED, "")
+		forOutputFile = strings.ReplaceAll(forOutputFile, BLUE, "")
+		forOutputFile = strings.ReplaceAll(forOutputFile, WHITE, "")
+		_, err := output.WriteString(forOutputFile)
+		if err != nil {
+			fmt.Println("couldn't write output")
+		}
+	}
 }
 
-func children(path string) [][2]string {
+func recursiveFileSearch(path string) [][2]string {
 	files := make([][2]string, 0) // {name, contents}
 	entries, err := os.ReadDir(path)
 	if err != nil {
@@ -144,16 +179,16 @@ func children(path string) [][2]string {
 			log.Fatal(err)
 		}
 		if e.IsDir() {
-			err := os.Chdir(e.Name())
+			err = os.Chdir(e.Name())
 			if err != nil {
-				continue
+				log.Fatal(err)
 			}
-			files = append(files, children(e.Name())...)
+			files = append(files, recursiveFileSearch(e.Name())...)
 			continue
 		}
 		contents, err := os.ReadFile(e.Name())
 		if err != nil {
-			continue
+			log.Fatal(err)
 		}
 		files = append(files, [2]string{e.Name(), string(contents)})
 	}
