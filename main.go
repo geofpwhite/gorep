@@ -165,13 +165,16 @@ func match(re *regexp.Regexp, noTrim bool, str string, preString string, output 
 
 func recursiveFileSearch(path string) [][2]string {
 	files := make([][2]string, 0) // {name, contents}
-	entries, err := os.ReadDir(path)
-	if err != nil {
-		return files
-	}
 	pwd, err := os.Getwd()
 	if err != nil {
 		log.Fatal(path + " is not a directory")
+	}
+	if pwd[len(pwd)-len(path):] != path && path != "." && path != "./" && path != ".\\" {
+		pwd += "/" + path
+	}
+	entries, err := os.ReadDir(pwd)
+	if err != nil {
+		return files
 	}
 	for _, e := range entries {
 		err := os.Chdir(pwd)
