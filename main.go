@@ -135,7 +135,7 @@ func match(re *regexp.Regexp, noTrim bool, str string, preString string, output 
 			}
 			post := line[indices[j][1]:]
 			if !noTrim {
-				post = strings.TrimRight(post, "\t")
+				post = strings.TrimRight(post, "\t\n")
 			}
 			matchBuilder.WriteString(post)
 		}
@@ -143,7 +143,7 @@ func match(re *regexp.Regexp, noTrim bool, str string, preString string, output 
 		if !noTrim {
 			matchString = strings.Trim(matchString, " ")
 		}
-		printString = fmt.Sprintf("%s%s", printString, matchString)
+		printString = fmt.Sprintf("%s%s\n", printString, matchString)
 
 		i++
 	}
