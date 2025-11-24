@@ -8,6 +8,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"fortio.org/terminal/ansipixels/tcolor"
 )
@@ -152,10 +153,14 @@ func match(re *regexp.Regexp, noTrim bool, str string, preString string, output 
 	}
 	fmt.Printf("%s", printString)
 	if output != nil {
-		forOutputFile := strings.ReplaceAll(printString, GREEN, "")
-		forOutputFile = strings.ReplaceAll(forOutputFile, RED, "")
-		forOutputFile = strings.ReplaceAll(forOutputFile, BLUE, "")
-		forOutputFile = strings.ReplaceAll(forOutputFile, WHITE, "")
+		forOutputFile := printString
+		for _, toRemove := range []string{GREEN, RED, BLUE, WHITE} {
+			forOutputFile = strings.ReplaceAll(forOutputFile, toRemove, "")
+		}
+		// forOutputFile := strings.ReplaceAll(printString, GREEN, "")
+		// forOutputFile = strings.ReplaceAll(forOutputFile, RED, "")
+		// forOutputFile = strings.ReplaceAll(forOutputFile, BLUE, "")
+		// forOutputFile = strings.ReplaceAll(forOutputFile, WHITE, "")
 		_, err := output.WriteString(forOutputFile)
 		if err != nil {
 			fmt.Println("couldn't write output")
@@ -167,7 +172,7 @@ func recursiveFileSearch(path string) [][2]string {
 	files := make([][2]string, 0) // {name, contents}
 	pwd, err := os.Getwd()
 	if err != nil {
-		log.Fatal(path + " is not a directory")
+		log.Fatal("can't open pwd")
 	}
 	if path != "." && path != "./" && path != ".\\" && pwd[len(pwd)-len(path):] != path {
 		pwd += "/" + path
@@ -190,7 +195,7 @@ func recursiveFileSearch(path string) [][2]string {
 			continue
 		}
 		contents, err := os.ReadFile(e.Name())
-		if err != nil {
+		if err != nil || !utf8.Valid(contents) {
 			fmt.Println(err)
 			continue
 		}
