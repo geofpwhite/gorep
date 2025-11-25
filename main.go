@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"errors"
 	"flag"
 	"fmt"
 	"io/fs"
@@ -186,19 +185,25 @@ func (c *config) match(str string, preString string, output *os.File) {
 
 func walk(path string) ([][2]string, error) {
 	files := make([][2]string, 0)
-	err := filepath.WalkDir(path, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
+	var walkFunc func(path string, d fs.DirEntry, err error) error
+	visited := make(map[string]bool)
+	walkFunc = func(newPath string, d fs.DirEntry, _ error) error {
+		if visited[newPath] {
+			return nil
 		}
-		if !d.IsDir() {
-			contents, err := os.ReadFile(path)
-			if err != nil || !utf8.Valid(contents) {
-				return errors.New("couldn't open file " + path)
-			}
-			files = append(files, [2]string{d.Name(), string(contents)})
+		visited[newPath] = true
+
+		if d.IsDir() {
+			return filepath.WalkDir(newPath, walkFunc)
 		}
+		contents, err := os.ReadFile(newPath)
+		if err != nil || !utf8.Valid(contents) {
+			return nil //nolint:nilerr // We need to return nil to continue trying to walk
+		}
+		files = append(files, [2]string{d.Name(), string(contents)})
 		return nil
-	})
+	}
+	err := filepath.WalkDir(path, walkFunc)
 	return files, err
 }
 
