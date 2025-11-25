@@ -62,14 +62,14 @@ func TestValidArgs(t *testing.T) {
 	}
 }
 
-func TestRecursiveFileSearch(t *testing.T) {
+func TestWalk(t *testing.T) {
 	pwd, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("%v", pwd)
 	}
 	tempDir := t.TempDir()
-	files := recursiveFileSearch(tempDir)
-	if len(files) != 0 {
+	files, err := walk(tempDir)
+	if len(files) != 0 || err != nil {
 		t.Errorf("Expected no files, got %d", len(files))
 	}
 
@@ -80,7 +80,10 @@ func TestRecursiveFileSearch(t *testing.T) {
 	if err != nil {
 		t.Errorf("%v", err)
 	}
-	files = recursiveFileSearch(tempDir)
+	files, err = walk(tempDir)
+	if err != nil {
+		t.Errorf("%v", err)
+	}
 	if len(files) != 1 || files[0][0] != "file.txt" {
 		t.Errorf("Expected one file named 'file.txt', got %v", files)
 	}
@@ -91,7 +94,10 @@ func TestRecursiveFileSearch(t *testing.T) {
 	os.Mkdir(nestedDir, 0o755)
 	filePath = nestedDir + "/file.txt"
 	os.WriteFile(filePath, []byte("content"), 0o644)
-	files = recursiveFileSearch(tempDir)
+	files, err = walk(tempDir)
+	if err != nil {
+		t.Errorf("%v", err)
+	}
 	if len(files) != 1 || files[0][0] != "file.txt" {
 		t.Errorf("Expected one file named 'file.txt' in nested directory, got %v", files)
 	}

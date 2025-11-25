@@ -2,10 +2,13 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"log"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"unicode/utf8"
@@ -51,11 +54,6 @@ func Configure() *config {
 	return newConfig(re, !*noTrim, *fileFlag, *outputFile, args)
 }
 
-func main() {
-	c := Configure()
-	c.Main()
-}
-
 var (
 	GREEN = tcolor.Green.Foreground()
 	WHITE = tcolor.White.Foreground()
@@ -69,12 +67,12 @@ func (c *config) Main() int {
 	if c.outputPath != "" {
 		_, err := os.ReadFile(c.outputPath)
 		if err == nil {
-			log.Print("output file already exists")
+			log.Println("output file already exists")
 			return 1
 		}
 		opf, err = os.Create(c.outputPath)
 		if err != nil {
-			log.Print("output file couldn't be created")
+			log.Println("output file couldn't be created")
 			return 1
 		}
 		defer opf.Close()
@@ -88,18 +86,18 @@ func (c *config) Main() int {
 	case c.file != "":
 		info, err := os.Stat(c.file)
 		if err != nil {
-			fmt.Println("can't open given file or directory")
+			log.Println("can't open given file or directory")
 			return 1
 		}
 		if info.IsDir() {
-			files := recursiveFileSearch(c.file)
+			files, _ := walk(c.file)
 			c.matchAllChildren(files, opf)
 			return 0
 		}
 		content, err := os.ReadFile(c.file)
 		str = string(content)
 		if err != nil {
-			fmt.Println("can't open given file")
+			log.Println("can't open given file")
 			return 1
 		}
 	case len(c.args) < 2:
@@ -113,7 +111,7 @@ func (c *config) Main() int {
 			index++
 			lines = append(lines, [2]int{builder.Len()})
 			if err != nil {
-				fmt.Println("invalid input")
+				log.Println("invalid input")
 				return 1
 			}
 		}
@@ -181,47 +179,30 @@ func (c *config) match(str string, preString string, output *os.File) {
 		}
 		_, err := output.WriteString(forOutputFile)
 		if err != nil {
-			fmt.Println("couldn't write output")
+			log.Println("couldn't write output")
 		}
 	}
 }
 
-func recursiveFileSearch(path string) [][2]string {
-	files := make([][2]string, 0) // {name, contents}
-	pwd, err := os.Getwd()
-	if err != nil {
-		log.Fatal("can't open pwd")
-	}
-
-	if path != "." && path != "./" && path != ".\\" && len(pwd)-len(path) > 0 && pwd[len(pwd)-len(path):] != path {
-		pwd += "/" + path
-	}
-
-	if path != "." && (path[:2] == "C:" || path[0] == '/') {
-		pwd = path
-	}
-	entries, err := os.ReadDir(pwd)
-	if err != nil {
-		return files
-	}
-	for _, e := range entries {
-		err := os.Chdir(pwd)
+func walk(path string) ([][2]string, error) {
+	files := make([][2]string, 0)
+	err := filepath.WalkDir(path, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
-		if e.IsDir() {
-			err = os.Chdir(e.Name())
-			if err != nil {
-				log.Fatal(err)
+		if !d.IsDir() {
+			contents, err := os.ReadFile(path)
+			if err != nil || !utf8.Valid(contents) {
+				return errors.New("couldn't open file " + path)
 			}
-			files = append(files, recursiveFileSearch(e.Name())...)
-			continue
+			files = append(files, [2]string{d.Name(), string(contents)})
 		}
-		contents, err := os.ReadFile(e.Name())
-		if err != nil || !utf8.Valid(contents) {
-			continue
-		}
-		files = append(files, [2]string{e.Name(), string(contents)})
-	}
-	return files
+		return nil
+	})
+	return files, err
+}
+
+func main() {
+	c := Configure()
+	c.Main()
 }
