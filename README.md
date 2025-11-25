@@ -1,5 +1,7 @@
 # gorep
 [![codecov](https://codecov.io/github/geofpwhite/gorep/graph/badge.svg?token=76I9U39J79)](https://codecov.io/github/geofpwhite/gorep)
+
+
 A small, fast grep-like tool written in Go. `gorep` searches text for a regular expression and prints matching lines with colored highlights. It supports reading from stdin, searching an inline string, a file, or recursively searching files in a directory.
 
 **Key Features**
