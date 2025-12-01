@@ -12,6 +12,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"fortio.org/terminal/ansipixels"
 	"fortio.org/terminal/ansipixels/tcolor"
 )
 
@@ -132,9 +133,8 @@ func (c *config) match(str string, preString string, output *os.File) {
 	emptyCount := 0
 	printString := ""
 	for line := range strings.Lines(str) {
-		matches := c.re.FindAllString(line, -1)
 		indices := c.re.FindAllStringIndex(line, -1)
-		if len(matches) == 0 {
+		if len(indices) == 0 {
 			emptyCount++
 			i++
 			continue
@@ -142,18 +142,19 @@ func (c *config) match(str string, preString string, output *os.File) {
 		printString = fmt.Sprintf("%s%s%d. %s", printString, RED, i+1, WHITE)
 		matchBuilder := strings.Builder{}
 		curI := 0
-		lengthMatches := len(matches)
-		for j, m := range matches {
-			pre := line[curI:indices[j][0]]
+		lengthMatches := len(indices)
+		for j, ary := range indices {
+			m := line[ary[0]:ary[1]]
+			pre := line[curI:ary[0]]
 			if c.trim {
 				pre = strings.TrimLeft(pre, "\t")
 			}
 			matchBuilder.WriteString(fmt.Sprintf("%s%s%s%s", pre, GREEN, m, WHITE))
-			curI = indices[j][1]
+			curI = ary[1]
 			if j != lengthMatches-1 {
 				continue
 			}
-			post := line[indices[j][1]:]
+			post := line[ary[1]:]
 			if c.trim {
 				post = strings.TrimRight(post, "\t\n")
 			}
@@ -170,12 +171,11 @@ func (c *config) match(str string, preString string, output *os.File) {
 	if emptyCount < i {
 		printString = fmt.Sprintf("%s%s", preString, printString)
 	}
-	fmt.Printf("%s", printString)
+	fmt.Print(printString)
 	if output != nil {
 		forOutputFile := printString
-		for _, toRemove := range []string{GREEN, RED, BLUE, WHITE} {
-			forOutputFile = strings.ReplaceAll(forOutputFile, toRemove, "")
-		}
+		cleanedBytes, _ := ansipixels.AnsiClean([]byte(forOutputFile))
+		forOutputFile = string(cleanedBytes)
 		_, err := output.WriteString(forOutputFile)
 		if err != nil {
 			log.Println("couldn't write output")
