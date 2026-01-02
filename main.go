@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"unicode/utf8"
 
 	"fortio.org/terminal/ansipixels"
@@ -17,20 +18,22 @@ import (
 )
 
 type config struct {
-	trim       bool
-	file       string
-	outputPath string
-	re         *regexp.Regexp
-	args       []string
+	trim        bool
+	file        string
+	outputPath  string
+	re          *regexp.Regexp
+	args        []string
+	fileChannel chan [2]string
 }
 
 func newConfig(re *regexp.Regexp, trim bool, file string, outputPath string, args []string) *config {
 	return &config{
-		trim:       trim,
-		file:       file,
-		outputPath: outputPath,
-		re:         re,
-		args:       args,
+		trim:        trim,
+		file:        file,
+		outputPath:  outputPath,
+		re:          re,
+		args:        args,
+		fileChannel: make(chan [2]string),
 	}
 }
 
@@ -90,7 +93,7 @@ func (c *config) Main() int {
 			return 1
 		}
 		if info.IsDir() {
-			files, _ := walk(c.file)
+			files := c.collect(c.file)
 			c.matchAllChildren(files, opf)
 			return 0
 		}
@@ -183,10 +186,10 @@ func (c *config) match(str string, preString string, output *os.File) {
 	}
 }
 
-func walk(path string) ([][2]string, error) {
-	files := make([][2]string, 0)
+func walk(path string, returnChan chan [2]string) error {
 	var walkFunc func(path string, d fs.DirEntry, err error) error
 	visited := make(map[string]bool)
+	wg := &sync.WaitGroup{}
 	walkFunc = func(newPath string, d fs.DirEntry, _ error) error {
 		if visited[newPath] {
 			return nil
@@ -196,15 +199,46 @@ func walk(path string) ([][2]string, error) {
 		if d.IsDir() {
 			return filepath.WalkDir(newPath, walkFunc)
 		}
-		contents, err := os.ReadFile(newPath)
-		if err != nil || !utf8.Valid(contents) {
-			return nil //nolint:nilerr // We need to return nil to continue trying to walk
-		}
-		files = append(files, [2]string{d.Name(), string(contents)})
+		wg.Add(1)
+		go func() {
+			read(returnChan, newPath, newPath)
+			wg.Done()
+		}()
 		return nil
 	}
 	err := filepath.WalkDir(path, walkFunc)
-	return files, err
+	wg.Wait()
+	close(returnChan)
+	return err
+}
+
+func read(returnChannel chan [2]string, path string, name string) {
+	contents, err := os.ReadFile(path)
+	if err != nil || !utf8.Valid(contents) {
+		return
+	}
+	returnChannel <- [2]string{name, string(contents)}
+}
+
+func (c *config) collect(path string) [][2]string {
+	return collect(path, c.fileChannel)
+}
+
+func collect(file string, fileChannel chan [2]string) [][2]string {
+	returning := make([][2]string, 0, 100)
+	done := make(chan bool)
+	go func() {
+		for file := range fileChannel {
+			returning = append(returning, file)
+		}
+		done <- true
+	}()
+	err := walk(file, fileChannel)
+	if err != nil {
+		return nil
+	}
+	<-done
+	return returning
 }
 
 func main() {

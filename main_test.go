@@ -68,8 +68,9 @@ func TestWalk(t *testing.T) {
 		t.Fatalf("%v", pwd)
 	}
 	tempDir := t.TempDir()
-	files, err := walk(tempDir)
-	if len(files) != 0 || err != nil {
+	channel := make(chan [2]string)
+	files := collect(tempDir, channel)
+	if len(files) != 0 {
 		t.Errorf("Expected no files, got %d", len(files))
 	}
 
@@ -80,10 +81,10 @@ func TestWalk(t *testing.T) {
 	if err != nil {
 		t.Errorf("%v", err)
 	}
-	files, err = walk(tempDir)
-	if err != nil {
-		t.Errorf("%v", err)
-	}
+
+	// fmt.Println("channel", channel)
+	channel2 := make(chan [2]string)
+	files = collect(tempDir, channel2)
 	if len(files) != 1 || files[0][0] != "file.txt" {
 		t.Errorf("Expected one file named 'file.txt', got %v", files)
 	}
@@ -94,7 +95,8 @@ func TestWalk(t *testing.T) {
 	os.Mkdir(nestedDir, 0o755)
 	filePath = nestedDir + "/file.txt"
 	os.WriteFile(filePath, []byte("content"), 0o644)
-	files, err = walk(tempDir)
+	channel3 := make(chan [2]string)
+	files = collect(tempDir, channel3)
 	if err != nil {
 		t.Errorf("%v", err)
 	}
