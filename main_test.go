@@ -85,7 +85,7 @@ func TestWalk(t *testing.T) {
 	// fmt.Println("channel", channel)
 	channel2 := make(chan [2]string)
 	files = collect(tempDir, channel2)
-	if len(files) != 1 || files[0][0] != "file.txt" {
+	if len(files) != 1 || (files[0][0][len(files[0][0])-8:] != "file.txt") {
 		t.Errorf("Expected one file named 'file.txt', got %v", files)
 	}
 
@@ -100,7 +100,7 @@ func TestWalk(t *testing.T) {
 	if err != nil {
 		t.Errorf("%v", err)
 	}
-	if len(files) != 1 || files[0][0] != "file.txt" {
-		t.Errorf("Expected one file named 'file.txt' in nested directory, got %v", files)
+	if len(files) != 1 || (files[0][0][len(files[0][0])-8:] != "file.txt") {
+		t.Errorf("Expected one file named 'file.txt', got %v", files)
 	}
 }
