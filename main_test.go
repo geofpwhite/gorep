@@ -63,7 +63,7 @@ func TestValidArgs(t *testing.T) {
 	}
 }
 
-func TestWalk(t *testing.T) {
+func TestWalk(_ *testing.T) {
 	c := newConfig(regexp.MustCompile("test[a-z]{3}"), false, ".", "", nil)
 	c.Main()
 }
