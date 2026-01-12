@@ -210,15 +210,15 @@ func (c *config) read(path string) {
 		file.Close()
 		return
 	}
-	fmt.Printf("%s%s:%s\n", BLUE, path, WHITE)
-	c.matchLine(scanner.Text(), line)
+	fileNameString := fmt.Sprintf("%s%s:%s", BLUE, path, WHITE)
+	first := true
 	for scanner.Scan() {
 		line++
 		if !utf8.Valid(scanner.Bytes()) {
 			file.Close()
 			return
 		}
-		c.matchLine(scanner.Text(), line)
+		first = c.matchLine(scanner.Text(), line, fileNameString, first)
 	}
 }
 
@@ -227,10 +227,14 @@ func main() {
 	c.Main()
 }
 
-func (c *config) matchLine(line string, lineNumber int) {
+func (c *config) matchLine(line string, lineNumber int, fileNameString string, first bool) bool {
 	indices := c.re.FindAllStringIndex(line, -1)
 	if indices == nil {
-		return
+		return first
+	}
+	if first {
+		fmt.Println(fileNameString)
+		first = false
 	}
 
 	printString := fmt.Sprintf("%s%d. %s", RED, lineNumber, WHITE)
@@ -259,4 +263,5 @@ func (c *config) matchLine(line string, lineNumber int) {
 		matchString = strings.Trim(matchString, " ")
 	}
 	fmt.Println(printString, matchString)
+	return first
 }
