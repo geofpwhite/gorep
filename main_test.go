@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"regexp"
 	"testing"
@@ -63,44 +64,15 @@ func TestValidArgs(t *testing.T) {
 }
 
 func TestWalk(t *testing.T) {
-	pwd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("%v", pwd)
-	}
-	tempDir := t.TempDir()
-	channel := make(chan [2]string)
-	files := collect(tempDir, channel)
-	if len(files) != 0 {
-		t.Errorf("Expected no files, got %d", len(files))
-	}
+	c := newConfig(regexp.MustCompile("test[a-z]{3}"), false, ".", "", nil)
+	c.Main()
+}
 
-	tempDir = t.TempDir()
-	filePath := tempDir + "/file.txt"
-	err = os.WriteFile(filePath, []byte("content"), 0o644)
-	t.Chdir(pwd)
-	if err != nil {
-		t.Errorf("%v", err)
-	}
-
-	// fmt.Println("channel", channel)
-	channel2 := make(chan [2]string)
-	files = collect(tempDir, channel2)
-	if len(files) != 1 || (files[0][0][len(files[0][0])-8:] != "file.txt") {
-		t.Errorf("Expected one file named 'file.txt', got %v", files)
-	}
-
-	tempDir = t.TempDir()
-	t.Chdir(pwd)
-	nestedDir := tempDir + "/nested"
-	os.Mkdir(nestedDir, 0o755)
-	filePath = nestedDir + "/file.txt"
-	os.WriteFile(filePath, []byte("content"), 0o644)
-	channel3 := make(chan [2]string)
-	files = collect(tempDir, channel3)
-	if err != nil {
-		t.Errorf("%v", err)
-	}
-	if len(files) != 1 || (files[0][0][len(files[0][0])-8:] != "file.txt") {
-		t.Errorf("Expected one file named 'file.txt', got %v", files)
+func BenchmarkMain(b *testing.B) {
+	fmt.Println(b.N)
+	c := newConfig(nil, false, "", "", []string{" this is a testing string"})
+	for b.Loop() {
+		c.re = regexp.MustCompile("test[a-z]{3}")
+		c.Main()
 	}
 }

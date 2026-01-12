@@ -1,0 +1,4 @@
+coverage.out
+cpu.prof
+mem.prof
+gorep.test.exe
