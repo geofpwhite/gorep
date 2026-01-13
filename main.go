@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"unicode/utf8"
 
 	"fortio.org/terminal/ansipixels"
@@ -17,20 +18,23 @@ import (
 )
 
 type config struct {
-	trim       bool
-	file       string
-	outputPath string
-	re         *regexp.Regexp
-	args       []string
+	trim          bool
+	file          string
+	outputPath    string
+	out           string
+	re            *regexp.Regexp
+	args          []string
+	resultChannel chan string
 }
 
 func newConfig(re *regexp.Regexp, trim bool, file string, outputPath string, args []string) *config {
 	return &config{
-		trim:       trim,
-		file:       file,
-		outputPath: outputPath,
-		re:         re,
-		args:       args,
+		trim:          trim,
+		file:          file,
+		outputPath:    outputPath,
+		re:            re,
+		args:          args,
+		resultChannel: make(chan string),
 	}
 }
 
@@ -75,7 +79,11 @@ func (c *config) Main() int {
 			log.Println("output file couldn't be created")
 			return 1
 		}
-		defer opf.Close()
+
+		defer func() {
+			opf.WriteString(c.out) //nolint:errcheck // ignore error on write
+			opf.Close()            //nolint:errcheck // ignore error on close
+		}()
 	}
 
 	var str string
@@ -183,6 +191,16 @@ func (c *config) match(str string, preString string, output *os.File) {
 func (c *config) walk(path string) error {
 	var walkFunc func(path string, d fs.DirEntry, err error) error
 	visited := make(map[string]bool)
+	wg := sync.WaitGroup{}
+	done := make(chan struct{}, 1)
+	go func() {
+		for result := range c.resultChannel {
+			bytes, _ := ansipixels.AnsiClean([]byte("\n" + result))
+			c.out += string(bytes)
+			fmt.Println(result)
+		}
+		done <- struct{}{}
+	}()
 	walkFunc = func(newPath string, d fs.DirEntry, _ error) error {
 		if visited[newPath] {
 			return nil
@@ -192,10 +210,17 @@ func (c *config) walk(path string) error {
 		if d.IsDir() {
 			return filepath.WalkDir(newPath, walkFunc)
 		}
-		c.read(newPath)
+
+		wg.Add(1)
+		go func() {
+			c.read(newPath)
+			wg.Done()
+		}()
 		return nil
 	}
 	err := filepath.WalkDir(path, walkFunc)
+	wg.Wait()
+	close(c.resultChannel)
 	return err
 }
 
@@ -207,18 +232,25 @@ func (c *config) read(path string) {
 	scanner := bufio.NewScanner(file)
 	line := 0
 	if !scanner.Scan() || !utf8.Valid(scanner.Bytes()) {
-		file.Close()
+		file.Close() //nolint:errcheck // ignore error on close
 		return
 	}
 	fileNameString := fmt.Sprintf("%s%s:%s", BLUE, path, WHITE)
-	first := true
+	final := []string{fileNameString}
 	for scanner.Scan() {
 		line++
 		if !utf8.Valid(scanner.Bytes()) {
-			file.Close()
+			file.Close() //nolint:errcheck // ignore error on close
 			return
 		}
-		first = c.matchLine(scanner.Text(), line, fileNameString, first)
+		str := c.matchLine(scanner.Text(), line)
+		if str == "" {
+			continue
+		}
+		final = append(final, str)
+	}
+	if len(final) > 1 {
+		c.resultChannel <- strings.Join(final, "\n")
 	}
 }
 
@@ -227,14 +259,10 @@ func main() {
 	c.Main()
 }
 
-func (c *config) matchLine(line string, lineNumber int, fileNameString string, first bool) bool {
+func (c *config) matchLine(line string, lineNumber int) string {
 	indices := c.re.FindAllStringIndex(line, -1)
 	if indices == nil {
-		return first
-	}
-	if first {
-		fmt.Println(fileNameString)
-		first = false
+		return ""
 	}
 
 	printString := fmt.Sprintf("%s%d. %s", RED, lineNumber, WHITE)
@@ -247,7 +275,7 @@ func (c *config) matchLine(line string, lineNumber int, fileNameString string, f
 		if c.trim {
 			pre = strings.TrimLeft(pre, "\t")
 		}
-		matchBuilder.WriteString(fmt.Sprintf("%s%s%s%s", pre, GREEN, m, WHITE))
+		fmt.Fprintf(&matchBuilder, "%s%s%s%s", pre, GREEN, m, WHITE)
 		curI = ary[1]
 		if j != lengthMatches-1 {
 			continue
@@ -262,6 +290,5 @@ func (c *config) matchLine(line string, lineNumber int, fileNameString string, f
 	if c.trim {
 		matchString = strings.Trim(matchString, " ")
 	}
-	fmt.Println(printString, matchString)
-	return first
+	return strings.ReplaceAll(printString+" "+matchString, string([]byte{7}), "") // remove bell characters
 }
